@@ -16,85 +16,14 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
           lfs: true
-          fetch-depth: 0  # 获取完整历史记录
-
-      - name: Clean git history but keep files
-        run: |
-          # 备份当前文件（排除.git目录）
-          echo "备份当前文件..."
-          mkdir -p /tmp/repo_backup
-          rsync -av --exclude='.git' --exclude='.gitattributes' . /tmp/repo_backup/
-          
-          # 保存当前的.gitattributes文件（包含LFS配置）
-          if [ -f .gitattributes ]; then
-            cp .gitattributes /tmp/repo_backup/
-          fi
-          
-          # 删除.git目录并重新初始化
-          rm -rf .git
-          git init
-          git config --global user.email "action@github.com"
-          git config --global user.name "GitHub Action"
-          
-          # 恢复.gitattributes文件
-          if [ -f /tmp/repo_backup/.gitattributes ]; then
-            cp /tmp/repo_backup/.gitattributes .
-          fi
-          
-          # 配置LFS
-          git config --global lfs.https://github.com/${{ github.repository }}.git/info/lfs.locksverify false
-          git lfs install --local
-          
-          # 添加远程仓库（先检查是否已存在）
-          git remote remove origin 2>/dev/null || true
-          git remote add origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-          
-          # 恢复所有文件
-          echo "恢复文件..."
-          rsync -av --exclude='.git' /tmp/repo_backup/ .
-          
-          # 清理备份
-          rm -rf /tmp/repo_backup
-          
-          # 添加所有文件到新仓库
-          git add --all
-          
-          # 如果有更改，提交初始提交
-          if ! git diff --cached --quiet; then
-            git commit -m "初始提交 - 清理历史记录"
-          fi
-
-      - name: Setup Git and LFS
-        run: |
-          # 配置Git用户信息
-          git config --global user.email "action@github.com"
-          git config --global user.name "GitHub Action"
-          
-          # 配置LFS（禁用锁定API以避免错误）
-          git config --global lfs.https://github.com/${{ github.repository }}.git/info/lfs.locksverify false
-          
-          # 安装并初始化Git LFS
-          git lfs install --local
-          git lfs pull
-
-      - name: Ensure LFS tracking
-        run: |
-          # 确保APK文件被LFS跟踪
-          if ! git lfs ls-files | grep -q "web/apk_files/.*\.apk"; then
-            echo "Configuring LFS tracking for APK files..."
-            git lfs track "web/apk_files/*.apk"
-            git add .gitattributes
-            git commit -m "Update LFS tracking for APK files" || echo "No changes to commit"
-          fi
+          fetch-depth: 0
 
       - name: Check latest release
         id: check_release
         run: |
-          # 获取FCL项目的最新发行版信息
           curl -s https://api.github.com/repos/FCL-Team/FoldCraftLauncher/releases/latest > latest_release.json
           LATEST_TAG=$(jq -r '.tag_name' latest_release.json)
           
-          # 获取当前仓库中的最新已知版本
           if [ -f .latest_version ]; then
             CURRENT_VERSION=$(cat .latest_version)
           else
@@ -104,7 +33,6 @@ jobs:
           echo "Latest version: $LATEST_TAG"
           echo "Current version: $CURRENT_VERSION"
           
-          # 比较版本
           if [ "$LATEST_TAG" != "$CURRENT_VERSION" ]; then
             echo "NEW_RELEASE=true" >> $GITHUB_ENV
             echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
@@ -112,10 +40,65 @@ jobs:
             echo "NEW_RELEASE=false" >> $GITHUB_ENV
           fi
 
+      - name: Clean git history but keep files
+        if: env.NEW_RELEASE == 'true'
+        run: |
+          mkdir -p /tmp/repo_backup
+          rsync -av --exclude='.git' --exclude='.gitattributes' . /tmp/repo_backup/
+          
+          if [ -f .gitattributes ]; then
+            cp .gitattributes /tmp/repo_backup/
+          fi
+          
+          rm -rf .git
+          git init
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          
+          if [ -f /tmp/repo_backup/.gitattributes ]; then
+            cp /tmp/repo_backup/.gitattributes .
+          fi
+          
+          git config --global lfs.https://github.com/${{ github.repository }}.git/info/lfs.locksverify false
+          git lfs install --local
+          
+          git remote remove origin 2>/dev/null || true
+          git remote add origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          
+          rsync -av --exclude='.git' /tmp/repo_backup/ .
+          
+          rm -rf /tmp/repo_backup
+          
+          git add --all
+          
+          if ! git diff --cached --quiet; then
+            git commit -m "初始提交 - 清理历史记录"
+          fi
+
+      - name: Setup Git and LFS
+        if: env.NEW_RELEASE == 'true'
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          
+          git config --global lfs.https://github.com/${{ github.repository }}.git/info/lfs.locksverify false
+          
+          git lfs install --local
+          git lfs pull
+
+      - name: Ensure LFS tracking
+        if: env.NEW_RELEASE == 'true'
+        run: |
+          if ! git lfs ls-files | grep -q "web/apk_files/.*\.apk"; then
+            echo "Configuring LFS tracking for APK files..."
+            git lfs track "web/apk_files/*.apk"
+            git add .gitattributes
+            git commit -m "Update LFS tracking for APK files" || echo "No changes to commit"
+          fi
+
       - name: Clean old APK files
         if: env.NEW_RELEASE == 'true'
         run: |
-          # 删除现有的web/apk_files目录中的所有文件
           if [ -d "web/apk_files" ]; then
             echo "Cleaning old APK files..."
             rm -rf web/apk_files/*
@@ -126,11 +109,9 @@ jobs:
       - name: Download and process new release
         if: env.NEW_RELEASE == 'true'
         run: |
-          # 创建临时目录下载文件
           mkdir -p temp_download
           cd temp_download
           
-          # 获取发行版的资产下载URL
           jq -r '.assets[].browser_download_url' ../latest_release.json | while read url; do
             if [ ! -z "$url" ]; then
               echo "Downloading $url"
@@ -141,13 +122,10 @@ jobs:
           cd ..
           rm latest_release.json
           
-          # 确保目标目录存在且为空
           mkdir -p web/apk_files
           
-          # 移动所有.apk文件到目标目录
           find temp_download -name "*.apk" -exec mv {} web/apk_files/ \;
           
-          # 删除临时目录
           rm -rf temp_download
 
       - name: Filter APK files (keep only 'all' versions)
@@ -155,11 +133,9 @@ jobs:
         run: |
           echo "Filtering APK files, keeping only 'all' versions..."
           
-          # 遍历web/apk_files目录中的所有文件
           for file in web/apk_files/*.apk; do
             if [ -f "$file" ]; then
               filename=$(basename "$file")
-              # 如果文件名不包含"all"，则删除该文件
               if [[ ! "$filename" == *"all"* ]]; then
                 echo "Removing non-all version: $filename"
                 rm "$file"
@@ -169,7 +145,6 @@ jobs:
             fi
           done
           
-          # 检查是否还有文件剩余
           remaining_files=$(find web/apk_files -name "*.apk" | wc -l)
           echo "Remaining APK files: $remaining_files"
           
@@ -180,30 +155,23 @@ jobs:
       - name: Add filtered files to git
         if: env.NEW_RELEASE == 'true'
         run: |
-          # 确保LFS跟踪APK文件
           git lfs track "web/apk_files/*.apk"
           git add .gitattributes
           
-          # 强制添加所有APK文件（包括删除的文件）
           git add --all web/apk_files/
           
-          # 更新版本记录文件
           echo "$LATEST_TAG" > .latest_version
           git add .latest_version
 
       - name: Generate download page
         if: env.NEW_RELEASE == 'true'
         run: |
-          # 创建web目录（如果不存在）
           mkdir -p web
           
-          # 读取最新版本号
           LATEST_VERSION=$(cat .latest_version)
           
-          # 获取APK文件列表（现在只包含all版本）
           APK_FILES=$(find web/apk_files -name "*.apk" -type f | sort)
           
-          # 生成HTML下载页面到web目录
           cat > web/index.html << EOF
           <!DOCTYPE html>
           <html lang="zh-CN">
@@ -343,7 +311,6 @@ jobs:
                   <h3>📦 FCL启动器下载</h3>
           EOF
           
-          # 添加文件列表
           for file in $APK_FILES; do
               filename=$(basename "$file")
               filesize=$(du -h "$file" | cut -f1)
@@ -359,7 +326,6 @@ jobs:
           EOF
           done
           
-          # 添加HTML尾部
           cat >> web/index.html << EOF
               </div>
               
@@ -370,16 +336,13 @@ jobs:
           </html>
           EOF
           
-          # 添加web目录到git
           git add web/
 
       - name: Commit and push changes
         if: env.NEW_RELEASE == 'true'
         run: |
-          # 提交所有更改
           git commit -m "自动更新到版本 $LATEST_TAG" || echo "No changes to commit"
           
-          # 强制推送到远程仓库，覆盖历史
           git push --force origin HEAD:main || git push --force origin HEAD:master
 
       - name: No new release
