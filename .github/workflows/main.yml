@@ -1,4 +1,4 @@
-name: 检查并下载新版本
+name: Check and Download New Release
 
 on:
   schedule:
@@ -6,12 +6,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  检查更新:
+  check-release:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - name: 检查最新版本
-        id: 检查版本
+      - name: Check latest release
+        id: check_release
         run: |
           curl -s https://api.github.com/repos/FCL-Team/FoldCraftLauncher/releases/latest > latest_release.json
           LATEST_TAG=$(jq -r '.tag_name' latest_release.json)
@@ -22,19 +22,19 @@ jobs:
             CURRENT_VERSION="v0.0.0"
           fi
           
-          echo "最新版本: $LATEST_TAG"
-          echo "当前版本: $CURRENT_VERSION"
+          echo "Latest version: $LATEST_TAG"
+          echo "Current version: $CURRENT_VERSION"
           
           if [ "$LATEST_TAG" != "$CURRENT_VERSION" ]; then
             echo "NEW_RELEASE=true" >> $GITHUB_ENV
             echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
           else
             echo "NEW_RELEASE=false" >> $GITHUB_ENV
-            echo "未发现新版本。当前版本已是最新。"
+            echo "No new release found. Current version is up to date."
             exit 0
           fi
 
-      - name: 检出仓库
+      - name: Checkout repository
         if: env.NEW_RELEASE == 'true'
         uses: actions/checkout@v3
         with:
@@ -43,7 +43,7 @@ jobs:
           lfs: true
           fetch-depth: 0
 
-      - name: 清理Git历史但保留文件
+      - name: Clean git history but keep files
         if: env.NEW_RELEASE == 'true'
         run: |
           mkdir -p /tmp/repo_backup
@@ -78,7 +78,7 @@ jobs:
             git commit -m "初始提交 - 清理历史记录"
           fi
 
-      - name: 设置Git和LFS
+      - name: Setup Git and LFS
         if: env.NEW_RELEASE == 'true'
         run: |
           git config --global user.email "action@github.com"
@@ -89,27 +89,27 @@ jobs:
           git lfs install --local
           git lfs pull
 
-      - name: 确保LFS跟踪
+      - name: Ensure LFS tracking
         if: env.NEW_RELEASE == 'true'
         run: |
           if ! git lfs ls-files | grep -q "web/apk_files/.*\.apk"; then
-            echo "配置APK文件的LFS跟踪..."
+            echo "Configuring LFS tracking for APK files..."
             git lfs track "web/apk_files/*.apk"
             git add .gitattributes
-            git commit -m "更新APK文件的LFS跟踪" || echo "无需提交更改"
+            git commit -m "Update LFS tracking for APK files" || echo "No changes to commit"
           fi
 
-      - name: 清理旧APK文件
+      - name: Clean old APK files
         if: env.NEW_RELEASE == 'true'
         run: |
           if [ -d "web/apk_files" ]; then
-            echo "清理旧APK文件..."
+            echo "Cleaning old APK files..."
             rm -rf web/apk_files/*
           else
             mkdir -p web/apk_files
           fi
 
-      - name: 下载并处理新版本
+      - name: Download and process new release
         if: env.NEW_RELEASE == 'true'
         run: |
           mkdir -p temp_download
@@ -117,7 +117,7 @@ jobs:
           
           jq -r '.assets[].browser_download_url' ../latest_release.json | while read url; do
             if [ ! -z "$url" ]; then
-              echo "正在下载 $url"
+              echo "Downloading $url"
               curl -L -O "$url"
             fi
           done
@@ -131,31 +131,31 @@ jobs:
           
           rm -rf temp_download
 
-      - name: 过滤APK文件（仅保留'all'版本）
+      - name: Filter APK files (keep only 'all' versions)
         if: env.NEW_RELEASE == 'true'
         run: |
-          echo "过滤APK文件，仅保留'all'版本..."
+          echo "Filtering APK files, keeping only 'all' versions..."
           
           for file in web/apk_files/*.apk; do
             if [ -f "$file" ]; then
               filename=$(basename "$file")
               if [[ ! "$filename" == *"all"* ]]; then
-                echo "移除非通用版本: $filename"
+                echo "Removing non-all version: $filename"
                 rm "$file"
               else
-                echo "保留通用版本: $filename"
+                echo "Keeping all version: $filename"
               fi
             fi
           done
           
           remaining_files=$(find web/apk_files -name "*.apk" | wc -l)
-          echo "剩余APK文件: $remaining_files"
+          echo "Remaining APK files: $remaining_files"
           
           if [ "$remaining_files" -eq 0 ]; then
-            echo "警告: 未找到'all'版本的APK文件!"
+            echo "Warning: No 'all' version APK files found!"
           fi
 
-      - name: 添加过滤后的文件到Git
+      - name: Add filtered files to git
         if: env.NEW_RELEASE == 'true'
         run: |
           git lfs track "web/apk_files/*.apk"
@@ -166,7 +166,7 @@ jobs:
           echo "$LATEST_TAG" > .latest_version
           git add .latest_version
 
-      - name: 生成下载页面
+      - name: Generate download page
         if: env.NEW_RELEASE == 'true'
         run: |
           mkdir -p web
@@ -307,7 +307,7 @@ jobs:
                   <h4>📲 多线程下载工具推荐</h4>
                   <p>如果您在手机上需要更快的下载速度，可以下载这款完全免费的多线程下载器：</p>
                   <p><a href="https://gitee.com/cyf112233/tttt/releases/download/dfdfdf/%E5%A4%9A%E7%BA%BF%E7%A8%8B%E4%B8%8B%E8%BD%BD%E6%96%87%E4%BB%B6app.apk" class="download-btn">下载多线程下载器(安卓版)</a></p>
-                  <p>听着，这他妈的是免费的，花钱我吃史，你只需要长按fcl的下载按钮，复制链接，去这里面下，速度包快，如果你速度本来就快，那你可以直接忽略</p>
+                  <p>听着，这他妈的是免费的，花钱我吃史，你只需要长按下载按钮，复制链接，去这里面下，速度包快的，如果你本来就快，那你直接忽略这句话</p>
               </div>
               
               <div class="download-list">
@@ -341,9 +341,9 @@ jobs:
           
           git add web/
 
-      - name: 提交并推送更改
+      - name: Commit and push changes
         if: env.NEW_RELEASE == 'true'
         run: |
-          git commit -m "自动更新到版本 $LATEST_TAG" || echo "无需提交更改"
+          git commit -m "自动更新到版本 $LATEST_TAG" || echo "No changes to commit"
           
           git push --force origin HEAD:main || git push --force origin HEAD:master
