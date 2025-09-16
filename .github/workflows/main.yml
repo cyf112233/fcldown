@@ -15,12 +15,7 @@ jobs:
         run: |
           curl -s https://api.github.com/repos/FCL-Team/FoldCraftLauncher/releases/latest > latest_release.json
           LATEST_TAG=$(jq -r '.tag_name' latest_release.json)
-          
-          if [ -f .latest_version ]; then
-            CURRENT_VERSION=$(cat .latest_version)
-          else
-            CURRENT_VERSION="v0.0.0"
-          fi
+          CURRENT_VERSION=$(cat .latest_version)
           
           echo "Latest version: $LATEST_TAG"
           echo "Current version: $CURRENT_VERSION"
