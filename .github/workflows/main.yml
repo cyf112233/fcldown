@@ -13,9 +13,15 @@ jobs:
       - name: Check latest release
         id: check_release
         run: |
+          curl -s https://raw.githubusercontent.com/${{ github.repository }}/main/.latest_version > .latest_version
           curl -s https://api.github.com/repos/FCL-Team/FoldCraftLauncher/releases/latest > latest_release.json
           LATEST_TAG=$(jq -r '.tag_name' latest_release.json)
-          CURRENT_VERSION=$(cat .latest_version)
+          
+          if [ -f .latest_version ]; then
+            CURRENT_VERSION=$(cat .latest_version)
+          else
+            CURRENT_VERSION="0.0.0"
+          fi
           
           echo "Latest version: $LATEST_TAG"
           echo "Current version: $CURRENT_VERSION"
@@ -28,7 +34,6 @@ jobs:
             echo "No new release found. Current version is up to date."
             exit 0
           fi
-
       - name: Checkout repository
         if: env.NEW_RELEASE == 'true'
         uses: actions/checkout@v3
@@ -72,7 +77,6 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "初始提交 - 清理历史记录"
           fi
-
       - name: Setup Git and LFS
         if: env.NEW_RELEASE == 'true'
         run: |
@@ -83,7 +87,6 @@ jobs:
           
           git lfs install --local
           git lfs pull
-
       - name: Ensure LFS tracking
         if: env.NEW_RELEASE == 'true'
         run: |
@@ -93,7 +96,6 @@ jobs:
             git add .gitattributes
             git commit -m "Update LFS tracking for APK files" || echo "No changes to commit"
           fi
-
       - name: Clean old APK files
         if: env.NEW_RELEASE == 'true'
         run: |
@@ -103,7 +105,6 @@ jobs:
           else
             mkdir -p web/apk_files
           fi
-
       - name: Download and process new release
         if: env.NEW_RELEASE == 'true'
         run: |
@@ -125,7 +126,6 @@ jobs:
           find temp_download -name "*.apk" -exec mv {} web/apk_files/ \;
           
           rm -rf temp_download
-
       - name: Filter APK files (keep only 'all' versions)
         if: env.NEW_RELEASE == 'true'
         run: |
@@ -149,7 +149,6 @@ jobs:
           if [ "$remaining_files" -eq 0 ]; then
             echo "Warning: No 'all' version APK files found!"
           fi
-
       - name: Add filtered files to git
         if: env.NEW_RELEASE == 'true'
         run: |
@@ -160,7 +159,6 @@ jobs:
           
           echo "$LATEST_TAG" > .latest_version
           git add .latest_version
-
       - name: Generate download page
         if: env.NEW_RELEASE == 'true'
         run: |
@@ -335,7 +333,6 @@ jobs:
           EOF
           
           git add web/
-
       - name: Commit and push changes
         if: env.NEW_RELEASE == 'true'
         run: |
